@@ -1,32 +1,15 @@
-import { connectorsForWallets } from "@rainbow-me/rainbowkit";
-import {
-  metaMaskWallet,
-  rabbyWallet,
-  coinbaseWallet,
-  phantomWallet,
-  trustWallet,
-  braveWallet,
-  okxWallet,
-} from "@rainbow-me/rainbowkit/wallets";
 import { createConfig, http } from "wagmi";
+import { injected, coinbaseWallet } from "wagmi/connectors";
 import { MONAD_TESTNET } from "./contract";
-
-const connectors = connectorsForWallets(
-  [
-    {
-      groupName: "Popular",
-      wallets: [metaMaskWallet, rabbyWallet, coinbaseWallet, phantomWallet, trustWallet, braveWallet, okxWallet],
-    },
-  ],
-  {
-    appName: "GreenMarket",
-    projectId: "dummy", // required by the type but WalletConnect is not used
-  }
-);
 
 export const wagmiConfig = createConfig({
   chains: [MONAD_TESTNET],
-  connectors,
+  connectors: [
+    injected({ target: "metaMask" }),
+    injected({ target: "phantom" }),
+    coinbaseWallet({ appName: "GreenMarket" }),
+    injected(),
+  ],
   transports: {
     [MONAD_TESTNET.id]: http("https://testnet-rpc.monad.xyz"),
   },
