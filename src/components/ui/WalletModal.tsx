@@ -1,192 +1,226 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useConnect, useAccount } from "wagmi";
-import { X, Loader2, ExternalLink } from "lucide-react";
+import { X, Loader2, ExternalLink, AlertCircle } from "lucide-react";
+
+const WALLET_INFO: Record<string, {
+  name: string;
+  logo: string;
+  installUrl: string;
+  detectKey?: string;
+}> = {
+  metaMask: {
+    name: "MetaMask",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg",
+    installUrl: "https://metamask.io/download/",
+    detectKey: "isMetaMask",
+  },
+  "io.metamask": {
+    name: "MetaMask",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg",
+    installUrl: "https://metamask.io/download/",
+    detectKey: "isMetaMask",
+  },
+  phantom: {
+    name: "Phantom",
+    logo: "https://play-lh.googleusercontent.com/5yqNiNFIaP7pjAfKlaqtXHMhE9Y_EjK5u6CJI0eEkZqbKMw5WFjsJF7HY7hujB1qJg",
+    installUrl: "https://phantom.app/",
+    detectKey: "isPhantom",
+  },
+  coinbaseWalletSDK: {
+    name: "Coinbase Wallet",
+    logo: "https://play-lh.googleusercontent.com/PjoJoG27miSglVBXoXrxBSLveV6e3EeBPpSmdiTE2nQ4qFKhf6s6QM8dUFQoKbp_LDM",
+    installUrl: "https://www.coinbase.com/wallet/downloads",
+    detectKey: "isCoinbaseWallet",
+  },
+  rabby: {
+    name: "Rabby Wallet",
+    logo: "https://play-lh.googleusercontent.com/S9_B_rVgVTyMJATqb0wvOUGOK07yUFwLfAqT-JOjnCCmYFf60R1PZPM4gNSBMKxNUB8",
+    installUrl: "https://rabby.io/",
+    detectKey: "isRabby",
+  },
+  okx: {
+    name: "OKX Wallet",
+    logo: "https://play-lh.googleusercontent.com/JvCiQ50LFGxhJplbJMk1vqh0lJE04YKZMbq-T9Rg-dXi3yOyXNTKe_r1xLBNGhB3C0",
+    installUrl: "https://www.okx.com/web3",
+    detectKey: "isOKExWallet",
+  },
+  trust: {
+    name: "Trust Wallet",
+    logo: "https://play-lh.googleusercontent.com/RUXiXUv4tK_CIfzIYMOlGqWMJg8A3PirHMBjCVkVJrKRVNYFzjEq6PnkDr3-Z9_VoQ",
+    installUrl: "https://trustwallet.com/",
+    detectKey: "isTrust",
+  },
+  injected: {
+    name: "Browser Wallet",
+    logo: "https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@1a63530be6e374711a8554f31b17e4cb92c25fa/svg/color/generic.svg",
+    installUrl: "https://metamask.io/download/",
+  },
+};
+
+function isWalletInstalled(detectKey?: string): boolean {
+  if (typeof window === "undefined") return false;
+  if (!detectKey) return !!(window as any).ethereum;
+  const eth = (window as any).ethereum;
+  if (!eth) return false;
+  if (eth[detectKey]) return true;
+  if (eth.providers) return eth.providers.some((p: any) => p[detectKey]);
+  return false;
+}
+
+function WalletLogo({ src, name }: { src: string; name: string }) {
+  const [errored, setErrored] = useState(false);
+  return errored ? (
+    <div className="w-full h-full rounded-xl bg-zinc-700 flex items-center justify-center text-white text-sm font-bold">
+      {name[0]}
+    </div>
+  ) : (
+    <img
+      src={src}
+      alt={name}
+      className="w-full h-full object-contain rounded-xl"
+      onError={() => setErrored(true)}
+    />
+  );
+}
 
 interface WalletModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-// Wallet display metadata
-const WALLET_META: Record<string, { name: string; icon: string; deeplink?: string }> = {
-  metaMask: {
-    name: "MetaMask",
-    icon: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M36.2 3L22.1 13.4l2.6-6.1L36.2 3z" fill="#E17726" stroke="#E17726" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M3.8 3l13.9 10.5-2.5-6.2L3.8 3z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M31.2 27.7l-3.7 5.7 7.9 2.2 2.3-7.7-6.5-.2zM2.3 27.9l2.2 7.7 7.9-2.2-3.7-5.7-6.4.2z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M11.9 18.2l-2.2 3.3 7.8.4-.3-8.4-5.3 4.7zM28.1 18.2l-5.4-4.8-.2 8.5 7.8-.4-2.2-3.3z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M12.4 33.4l4.7-2.3-4.1-3.2-.6 5.5zM22.9 31.1l4.7 2.3-.6-5.5-4.1 3.2z" fill="#E27625" stroke="#E27625" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M27.6 33.4l-4.7-2.3.4 3.1-.1 2.3 4.4-3.1zM12.4 33.4l4.4 3.1v-2.3l.3-3.1-4.7 2.3z" fill="#D5BFB2" stroke="#D5BFB2" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M16.9 25.9l-3.9-1.2 2.8-1.3 1.1 2.5zM23.1 25.9l1.1-2.5 2.8 1.3-3.9 1.2z" fill="#233447" stroke="#233447" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M12.4 33.4l.6-5.7-4.3.1 3.7 5.6zM27 27.7l.6 5.7 3.7-5.6-4.3-.1zM32.5 21.5l-7.8.4.7 4 1.1-2.5 2.8 1.3 3.2-3.2zM13 24.7l2.8-1.3 1.1 2.5.7-4-7.8-.4 3.2 3.2z" fill="#CC6228" stroke="#CC6228" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M9.7 21.5l3.3 6.4-.1-3.2-3.2-3.2zM27.1 24.7l-.2 3.2 3.3-6.4-3.1 3.2zM17.6 21.9l-.7 4 .9 4.6.2-6.1-.4-2.5zM22.4 21.9l-.3 2.4.1 6.1.9-4.5-.7-4z" fill="#E27525" stroke="#E27525" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M23.1 25.9l-.9 4.5.7.5 4.1-3.2.2-3.2-4.1 1.4zM13 24.7l.1 3.2 4.1 3.2.7-.5-.9-4.5-4-1.4z" fill="#F5841F" stroke="#F5841F" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M23.2 36.5l.1-2.3-.3-.3h-5l-.3.3v2.3l-4.4-3.1 1.5 1.3 3.1 2.1h5.3l3.1-2.1 1.5-1.3-4.6 3.1z" fill="#C0AC9D" stroke="#C0AC9D" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M22.9 31.1l-.7-.5h-4.4l-.7.5-.3 3.1.3-.3h5l.3.3-.5-3.1z" fill="#161616" stroke="#161616" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M36.8 13.8L38 7.9 36.2 3l-13.3 9.9 5.1 4.3 7.2 2.1 1.6-1.9-.7-.5 1.1-1-.8-.6 1.1-.9-.7-.5zM2 7.9l1.2 5.9-.8.5 1.1.9-.8.6 1.1 1-.7.5 1.6 1.9 7.2-2.1 5.1-4.3L3.8 3 2 7.9z" fill="#763E1A" stroke="#763E1A" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M35.2 19.3l-7.2-2.1 2.2 3.3-3.3 6.4 4.3-.1h6.4l-2.4-7.5zM12 17.2l-7.2 2.1-2.4 7.5h6.4l4.3.1-3.3-6.4 2.2-3.3zM22.4 21.9l.5-8.6 2.2-5.9h-10l2.1 5.9.6 8.6.2 2.5v6.1h4.4l.1-6.1-.1-2.5z" fill="#F5841F" stroke="#F5841F" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>`,
-  },
-  phantom: {
-    name: "Phantom",
-    icon: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="40" height="40" rx="10" fill="#AB9FF2"/>
-      <path d="M8 20.5C8 14.1 13.1 9 19.5 9H26c5.5 0 9 4.5 9 9s-3.5 9-9 9h-1.5c-.8 0-1.5.7-1.5 1.5s.7 1.5 1.5 1.5H26c.8 0 1.5.7 1.5 1.5S26.8 33 26 33h-6.5C13.1 33 8 27.9 8 21.5v-1z" fill="white"/>
-      <path d="M16 21a2 2 0 100-4 2 2 0 000 4zM24 21a2 2 0 100-4 2 2 0 000 4z" fill="#AB9FF2"/>
-    </svg>`,
-  },
-  coinbaseWalletSDK: {
-    name: "Coinbase Wallet",
-    icon: `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="40" height="40" rx="10" fill="#0052FF"/>
-      <path d="M20 8C13.4 8 8 13.4 8 20s5.4 12 12 12 12-5.4 12-12S26.6 8 20 8zm0 18.5c-3.6 0-6.5-2.9-6.5-6.5s2.9-6.5 6.5-6.5 6.5 2.9 6.5 6.5-2.9 6.5-6.5 6.5z" fill="white"/>
-      <path d="M17.5 18h5c.3 0 .5.2.5.5v3c0 .3-.2.5-.5.5h-5c-.3 0-.5-.2-.5-.5v-3c0-.3.2-.5.5-.5z" fill="white"/>
-    </svg>`,
-  },
-};
-
-const BROWSER_WALLETS = [
-  {
-    id: "metaMask",
-    name: "MetaMask",
-    icon: "🦊",
-    checkInstalled: () => typeof window !== "undefined" && !!(window as any).ethereum?.isMetaMask,
-    installUrl: "https://metamask.io/download/",
-  },
-  {
-    id: "phantom",
-    name: "Phantom",
-    icon: "👻",
-    checkInstalled: () => typeof window !== "undefined" && !!(window as any).phantom?.ethereum,
-    installUrl: "https://phantom.app/",
-  },
-  {
-    id: "coinbaseWalletSDK",
-    name: "Coinbase Wallet",
-    icon: "🔵",
-    checkInstalled: () => typeof window !== "undefined" && !!(window as any).coinbaseWalletExtension,
-    installUrl: "https://www.coinbase.com/wallet/downloads",
-  },
-  {
-    id: "injected",
-    name: "Browser Wallet",
-    icon: "🌐",
-    checkInstalled: () => typeof window !== "undefined" && !!(window as any).ethereum,
-    installUrl: null,
-  },
-];
-
 export function WalletModal({ open, onClose }: WalletModalProps) {
-  const { connectors, connect, isPending, variables } = useConnect();
+  const { connectors, connect, isPending, variables, error } = useConnect();
   const { isConnected } = useAccount();
   const overlayRef = useRef<HTMLDivElement>(null);
+  const [connectingId, setConnectingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isConnected) onClose();
+    if (isConnected) { onClose(); setConnectingId(null); }
   }, [isConnected, onClose]);
 
   useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", handleKey);
+    if (!open) { setConnectingId(null); return; }
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
-      window.removeEventListener("keydown", handleKey);
+      window.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (!isPending) setConnectingId(null);
+  }, [isPending]);
+
   if (!open) return null;
 
   const handleConnect = (connector: any) => {
+    setConnectingId(connector.uid);
     connect({ connector });
   };
+
+  // Deduplicate connectors by name
+  const seen = new Set<string>();
+  const uniqueConnectors = connectors.filter((c) => {
+    const key = c.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.75)" }}
+      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{ backgroundColor: "rgba(0,0,0,0.8)", backdropFilter: "blur(4px)" }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className="w-full sm:w-[420px] rounded-t-2xl sm:rounded-xl overflow-hidden"
-        style={{ backgroundColor: "#111113", border: "1px solid #27272a" }}
+        className="w-full sm:w-[400px] flex flex-col rounded-t-2xl sm:rounded-2xl overflow-hidden"
+        style={{ backgroundColor: "#0f0f11", border: "1px solid #222224", maxHeight: "90vh" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-zinc-800">
+        <div className="flex items-center justify-between px-5 py-4 shrink-0" style={{ borderBottom: "1px solid #1e1e20" }}>
           <div>
-            <h2 className="text-lg font-bold text-white">Connect a Wallet</h2>
-            <p className="text-xs text-zinc-500 mt-0.5">Choose your wallet to continue</p>
+            <p className="text-base font-bold text-white">Connect Wallet</p>
+            <p className="text-xs mt-0.5" style={{ color: "#71717a" }}>
+              Choose your wallet to get started
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+            style={{ color: "#71717a" }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#1e1e20")}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
+        {/* Error */}
+        {error && (
+          <div className="mx-4 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-red-400" style={{ backgroundColor: "#2a1015", border: "1px solid #3f1020" }}>
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            {(error as any)?.shortMessage ?? error.message}
+          </div>
+        )}
+
         {/* Wallet list */}
-        <div className="p-4 space-y-2">
-          {connectors.map((connector) => {
-            const meta = BROWSER_WALLETS.find(
-              (w) => w.id === connector.id || connector.name.toLowerCase().includes(w.id.toLowerCase())
-            );
-            const isLoading = isPending && variables?.connector === connector;
-            const isInstalled = meta?.checkInstalled?.() ?? true;
+        <div className="overflow-y-auto p-3 space-y-1.5">
+          {uniqueConnectors.map((connector) => {
+            const id = connector.id as string;
+            const meta = WALLET_INFO[id] ?? WALLET_INFO["injected"];
+            const installed = isWalletInstalled(meta.detectKey);
+            const isLoading = connectingId === connector.uid && isPending;
 
             return (
               <button
                 key={connector.uid}
-                onClick={() => handleConnect(connector)}
+                onClick={() => {
+                  if (!installed && meta.installUrl && id !== "injected") {
+                    window.open(meta.installUrl, "_blank");
+                    return;
+                  }
+                  handleConnect(connector);
+                }}
                 disabled={isPending}
-                className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl text-left transition-all disabled:opacity-60"
-                style={{
-                  backgroundColor: "#1a1a1c",
-                  border: "1px solid #27272a",
+                className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-left transition-all group disabled:opacity-60"
+                style={{ backgroundColor: "#161618", border: "1px solid #1e1e20" }}
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "#22c55e40";
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "#161f16";
                 }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = "#22c55e50";
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "#1f2a1f";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = "#27272a";
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "#1a1a1c";
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "#1e1e20";
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "#161618";
                 }}
               >
-                {/* Icon */}
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0"
-                  style={{ backgroundColor: "#27272a" }}
-                >
-                  {meta?.icon ?? "💼"}
+                {/* Logo */}
+                <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 p-0.5" style={{ backgroundColor: "#222224" }}>
+                  <WalletLogo src={meta.logo} name={meta.name} />
                 </div>
 
-                {/* Name + status */}
+                {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-white">{connector.name}</div>
-                  <div className="text-xs text-zinc-500 mt-0.5">
-                    {isLoading
-                      ? "Connecting…"
-                      : isInstalled
-                      ? "Detected"
-                      : "Not installed"}
-                  </div>
+                  <p className="text-sm font-semibold text-white">{connector.name}</p>
+                  <p className="text-xs mt-0.5" style={{ color: installed ? "#22c55e" : "#71717a" }}>
+                    {isLoading ? "Connecting…" : installed ? "Detected" : "Not installed — click to install"}
+                  </p>
                 </div>
 
-                {/* Right icon */}
-                <div className="shrink-0">
+                {/* Right */}
+                <div className="shrink-0 ml-1">
                   {isLoading ? (
                     <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
-                  ) : isInstalled ? (
+                  ) : installed ? (
                     <div className="w-2 h-2 rounded-full bg-emerald-400" />
                   ) : (
-                    <ExternalLink className="w-4 h-4 text-zinc-600" />
+                    <ExternalLink className="w-4 h-4" style={{ color: "#52525b" }} />
                   )}
                 </div>
               </button>
@@ -195,16 +229,16 @@ export function WalletModal({ open, onClose }: WalletModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-zinc-800 text-center">
-          <p className="text-xs text-zinc-600">
-            New to crypto?{" "}
+        <div className="px-5 py-4 text-center shrink-0" style={{ borderTop: "1px solid #1e1e20" }}>
+          <p className="text-xs" style={{ color: "#52525b" }}>
+            New to wallets?{" "}
             <a
               href="https://metamask.io/download/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-emerald-400 hover:underline"
             >
-              Get MetaMask
+              Get MetaMask →
             </a>
           </p>
         </div>
