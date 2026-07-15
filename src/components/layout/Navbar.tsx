@@ -8,7 +8,7 @@ export function Navbar() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 group">
+        <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-sm bg-emerald-500 flex items-center justify-center">
             <Leaf className="w-4 h-4 text-black" />
           </div>
