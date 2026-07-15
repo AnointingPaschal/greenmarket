@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+:root {
+  --font-inter: system-ui, -apple-system, sans-serif;
+  --font-mono: "Courier New", Courier, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-inter);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #09090b; }
+::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+[data-rk] {
+  --rk-radii-modal: 4px !important;
+  --rk-radii-actionButton: 4px !important;
+  --rk-radii-connectButton: 4px !important;
+  --rk-radii-menuButton: 4px !important;
+  --rk-radii-walletButton: 4px !important;
+}
