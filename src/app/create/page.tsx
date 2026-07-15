@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { ConnectButton } from "@/components/ui/ConnectButton";
 import { parseEther } from "viem";
 import { GREENMARKET_ABI, GREENMARKET_ADDRESS } from "@/lib/contract";
 import { Info, Loader2, CheckCircle2 } from "lucide-react";

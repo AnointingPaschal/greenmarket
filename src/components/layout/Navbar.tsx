@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { ConnectButton } from "@/components/ui/ConnectButton";
 import { Leaf } from "lucide-react";
 
 export function Navbar() {
@@ -27,11 +27,7 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-3">
-          <ConnectButton
-            showBalance={false}
-            chainStatus="icon"
-            accountStatus="avatar"
-          />
+          <ConnectButton />
           <Link
             href="/create"
             className="hidden sm:flex items-center gap-1.5 px-4 py-2 rounded-sm bg-emerald-500 text-black text-sm font-semibold hover:bg-emerald-400 transition-colors"

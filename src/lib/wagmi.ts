@@ -1,9 +1,12 @@
-import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { createConfig, http } from "wagmi";
+import { injected } from "wagmi/connectors";
 import { MONAD_TESTNET } from "./contract";
 
-export const wagmiConfig = getDefaultConfig({
-  appName: "GreenMarket",
-  projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "YOUR_PROJECT_ID",
+export const wagmiConfig = createConfig({
   chains: [MONAD_TESTNET],
+  connectors: [injected()],
+  transports: {
+    [MONAD_TESTNET.id]: http("https://testnet-rpc.monad.xyz"),
+  },
   ssr: true,
 });

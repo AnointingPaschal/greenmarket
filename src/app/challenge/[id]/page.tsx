@@ -1,18 +1,20 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useAccount, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { parseEther, formatEther } from "viem";
+import { ConnectButton } from "@/components/ui/ConnectButton";
+import { parseEther } from "viem";
 import { GREENMARKET_ABI, GREENMARKET_ADDRESS, STATUS_MAP, STATUS_COLOR } from "@/lib/contract";
 import { formatMON, shortenAddress, formatDate, formatTimeLeft, isZeroAddress } from "@/lib/utils";
-import { Loader2, ExternalLink, Copy, CheckCircle2, Clock } from "lucide-react";
-import { useState } from "react";
+import { Loader2, ExternalLink, Copy, CheckCircle2, Clock, Gavel } from "lucide-react";
 
 export default function ChallengePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { address, isConnected } = useAccount();
   const [copied, setCopied] = useState(false);
+  const [oracleLoading, setOracleLoading] = useState(false);
+  const [oracleError, setOracleError] = useState<string | null>(null);
+  const [pendingVerdict, setPendingVerdict] = useState<{ winner: string; reason: string } | null>(null);
 
   const { data, isLoading, refetch } = useReadContracts({
     contracts: [
@@ -25,8 +27,10 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
     ],
   });
 
-  const { writeContract, data: txHash, isPending, error: writeError } = useWriteContract();
+  const { writeContract, data: txHash, isPending, error: writeError, reset } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+
+  if (isSuccess) refetch();
 
   const raw = data?.[0]?.result as any;
   const c = raw
@@ -53,6 +57,7 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
 
   const handleAccept = () => {
     if (!c) return;
+    reset();
     writeContract({
       address: GREENMARKET_ADDRESS,
       abi: GREENMARKET_ABI,
@@ -63,6 +68,7 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
   };
 
   const handleCancel = () => {
+    reset();
     writeContract({
       address: GREENMARKET_ADDRESS,
       abi: GREENMARKET_ABI,
@@ -72,6 +78,7 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
   };
 
   const handleClaimExpired = () => {
+    reset();
     writeContract({
       address: GREENMARKET_ADDRESS,
       abi: GREENMARKET_ABI,
@@ -80,9 +87,38 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
     });
   };
 
-  if (isSuccess) {
-    refetch();
-  }
+  // Step 1: Ask AI for verdict
+  const handleGetVerdict = async () => {
+    setOracleLoading(true);
+    setOracleError(null);
+    setPendingVerdict(null);
+    try {
+      const res = await fetch("/api/oracle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId: Number(id) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Oracle failed");
+      setPendingVerdict({ winner: data.winner, reason: data.reason });
+    } catch (err: any) {
+      setOracleError(err.message);
+    } finally {
+      setOracleLoading(false);
+    }
+  };
+
+  // Step 2: Submit verdict on-chain with connected wallet (oracle wallet)
+  const handleSubmitVerdict = () => {
+    if (!pendingVerdict) return;
+    reset();
+    writeContract({
+      address: GREENMARKET_ADDRESS,
+      abi: GREENMARKET_ABI,
+      functionName: "resolveChallenge",
+      args: [BigInt(id), pendingVerdict.winner as `0x${string}`, pendingVerdict.reason],
+    });
+  };
 
   if (isLoading) {
     return (
@@ -106,13 +142,14 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
   const statusLabel = STATUS_MAP[c.status] ?? "Unknown";
   const statusClass = STATUS_COLOR[c.status] ?? "";
   const isCreator = address?.toLowerCase() === c.creator.toLowerCase();
-  const isOpponent = address?.toLowerCase() === c.acceptedBy.toLowerCase();
+  const isOracle = isConnected; // Oracle = connected wallet (must be set as oracle on contract)
   const canAccept =
     c.status === 0 &&
     !isCreator &&
     (isZeroAddress(c.opponent) || address?.toLowerCase() === c.opponent.toLowerCase());
   const now = Math.floor(Date.now() / 1000);
   const isExpiredUnaccepted = c.status === 0 && now > Number(c.acceptDeadline);
+  const canResolve = c.status === 1 && now >= Number(c.resolveDeadline);
 
   return (
     <div className="min-h-screen max-w-3xl mx-auto px-4 sm:px-6 py-12">
@@ -145,7 +182,7 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
           { label: "Stake (each)", value: `${formatMON(c.stake)} MON` },
           { label: "Total Pot", value: `${formatMON(pot)} MON` },
           { label: "Accept Deadline", value: formatTimeLeft(c.acceptDeadline) },
-          { label: "Resolve Window", value: formatDate(c.resolveDeadline) },
+          { label: "Resolve At", value: formatDate(c.resolveDeadline) },
         ].map((s) => (
           <div key={s.label} className="bg-zinc-950 px-4 py-4">
             <div className="text-xs text-zinc-500 uppercase tracking-widest mb-1">{s.label}</div>
@@ -185,11 +222,22 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
         <p className="text-sm text-zinc-300 break-all">{c.evidenceSource}</p>
       </div>
 
-      {/* Verdict reason */}
+      {/* AI Verdict result */}
       {c.status === 2 && c.verdictReason && (
         <div className="border border-emerald-500/30 bg-emerald-500/5 rounded-sm p-5 mb-6">
           <p className="text-xs text-emerald-400 uppercase tracking-widest font-mono mb-2">AI Verdict</p>
           <p className="text-sm text-zinc-300 leading-relaxed">{c.verdictReason}</p>
+        </div>
+      )}
+
+      {/* Pending verdict preview (before submitting on-chain) */}
+      {pendingVerdict && (
+        <div className="border border-amber-500/30 bg-amber-500/5 rounded-sm p-5 mb-6">
+          <p className="text-xs text-amber-400 uppercase tracking-widest font-mono mb-2">AI Verdict — Ready to Submit</p>
+          <p className="text-sm text-zinc-300 leading-relaxed mb-3">{pendingVerdict.reason}</p>
+          <p className="text-xs text-zinc-500">
+            Winner: <span className="text-white font-mono">{shortenAddress(pendingVerdict.winner)}</span>
+          </p>
         </div>
       )}
 
@@ -201,10 +249,10 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
         </div>
       )}
 
-      {/* Error display */}
-      {writeError && (
+      {/* Errors */}
+      {(writeError || oracleError) && (
         <div className="border border-red-500/30 bg-red-500/10 rounded-sm px-4 py-3 text-sm text-red-400 mb-4">
-          {(writeError as any)?.shortMessage ?? writeError.message}
+          {oracleError ?? (writeError as any)?.shortMessage ?? writeError?.message}
         </div>
       )}
 
@@ -239,11 +287,7 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
                 disabled={isPending || isConfirming}
                 className="w-full flex items-center justify-center gap-2 py-3 border border-red-500/40 text-red-400 text-sm font-medium rounded-sm hover:border-red-500 hover:bg-red-500/5 disabled:opacity-50 transition-colors"
               >
-                {isPending || isConfirming ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  "Cancel & Withdraw Stake"
-                )}
+                {isPending || isConfirming ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cancel & Withdraw Stake"}
               </button>
             )}
 
@@ -265,8 +309,50 @@ export default function ChallengePage({ params }: { params: Promise<{ id: string
               </button>
             )}
 
+            {/* Oracle: Get AI verdict */}
+            {canResolve && !pendingVerdict && (
+              <button
+                onClick={handleGetVerdict}
+                disabled={oracleLoading}
+                className="w-full flex items-center justify-center gap-2 py-3.5 border border-emerald-500/50 text-emerald-400 font-semibold rounded-sm hover:bg-emerald-500/10 disabled:opacity-50 transition-colors"
+              >
+                {oracleLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    AI is reading the evidence…
+                  </>
+                ) : (
+                  <>
+                    <Gavel className="w-4 h-4" />
+                    Get AI Verdict
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Oracle: Submit verdict on-chain */}
+            {pendingVerdict && (
+              <button
+                onClick={handleSubmitVerdict}
+                disabled={isPending || isConfirming}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-emerald-500 text-black font-bold rounded-sm hover:bg-emerald-400 disabled:opacity-50 transition-colors"
+              >
+                {isPending || isConfirming ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {isPending ? "Confirm in wallet…" : "Submitting verdict…"}
+                  </>
+                ) : (
+                  <>
+                    <Gavel className="w-4 h-4" />
+                    Submit Verdict On-Chain
+                  </>
+                )}
+              </button>
+            )}
+
             {/* Waiting states */}
-            {c.status === 1 && (
+            {c.status === 1 && !canResolve && (
               <div className="w-full py-3.5 border border-amber-500/30 bg-amber-500/5 text-amber-400 text-sm font-medium rounded-sm text-center">
                 Accepted — Awaiting resolve window ({formatTimeLeft(c.resolveDeadline)} left)
               </div>
